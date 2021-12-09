@@ -28,14 +28,10 @@ namespace rexer
 
             // NEWLINE
             this.RegisterLexelet(@"^(\r\n|\n)", TokenType.NEWLINE);
-
             // WHITESPACE
             this.RegisterLexelet(@"^( |\t)+", isIgnored: true);
             // SINGLE-LINE COMMENT
             this.RegisterLexelet(@"^//.*(\r\n|\n)", isIgnored: true);
-            // MULTI-LINE COMMENT
-            // TODO
-            this.RegisterLexelet("^", isIgnored: true);
 
             this.RegisterLexelet(@"^==", TokenType.EQEQ);
             this.RegisterLexelet(@"^->", TokenType.OPEN_ARROW);

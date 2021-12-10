@@ -13,49 +13,18 @@ namespace rexer
         int LineNo { get; set; }
         int Col { get; set; }
         int Pos { get; set; }
-
-        List<Lexelet> Lexelets { get; }
+        char CurChar { get; set; }
 
         public Lexer(string source)
         {
             this.Source = source;
-            this.Lexelets = new();
 
+            this.Pos = -1;
             this.LineNo = 1;
-            this.Col = 1;
+            this.Col = 0;
 
-            this.RegisterLexelet(@"^\Z", TokenType.EOF);
-
-            // NEWLINE
-            this.RegisterLexelet(@"^(\r\n|\n)", TokenType.NEWLINE);
-            // WHITESPACE
-            this.RegisterLexelet(@"^( |\t)+", isIgnored: true);
-            // SINGLE-LINE COMMENT
-            this.RegisterLexelet(@"^//.*(\r\n|\n)", isIgnored: true);
-
-            this.RegisterLexelet(@"^==", TokenType.EQEQ);
-            this.RegisterLexelet(@"^->", TokenType.OPEN_ARROW);
-            this.RegisterLexelet(@"^<-", TokenType.CLOSE_ARROW);
-
-            this.RegisterLexelet(@"^\(", TokenType.LPAREN);
-            this.RegisterLexelet(@"^\)", TokenType.RPAREN);
-            this.RegisterLexelet(@"^>", TokenType.GT);
-            this.RegisterLexelet(@"^=", TokenType.EQ);
-            this.RegisterLexelet(@"^;", TokenType.SEMICOLON);
-            this.RegisterLexelet(@"^:", TokenType.COLON);
-            this.RegisterLexelet(@"^\?", TokenType.CLOSE_ARROW);
-
-            this.RegisterLexelet(@"if", TokenType.IF);
-
-            this.RegisterLexelet(@"^[_a-zA-Z][_a-zA-Z0-9]*", TokenType.IDEN);
-            this.RegisterLexelet(@"^\d*\.?\d+", TokenType.NUMBER);
+            this.NextChar();
         }
-
-        void RegisterLexelet(string pattern, TokenType kind)
-            => this.Lexelets.Add(new(pattern, kind));
-
-        void RegisterLexelet(string pattern, bool isIgnored)
-            => this.Lexelets.Add(new(pattern, isIgnored));
 
         void Abort(string message)
         {
@@ -63,48 +32,127 @@ namespace rexer
             Environment.Exit(1);
         }
 
-        void Advance(int length, bool isNewline = false)
+        Token CreateToken(char text, TokenType kind)
+            => new(text, kind, this.LineNo, this.Col);
+        Token CreateToken(string text, TokenType kind)
+            => new(text, kind, this.LineNo, this.Col);
+
+        void HandleComment()
         {
-            this.Pos += length;
-            this.Col += length;
+            int newlineLength;
+            while (!this.IsNewline(out newlineLength))
+                this.Advance();
+            this.HandleNewline(newlineLength);
+        }
 
-            if (!isNewline)
-                return;
-
+        void HandleNewline(int newlineLength)
+        {
+            this.Advance(newlineLength);
             this.LineNo += 1;
             this.Col = 1;
         }
 
-        public Token GetToken()
+        void NextChar(int length = 1)
         {
-            Match match;
-            var lexelet = this.FindLexelet(this.Source.Substring(this.Pos), out match);
-
-            while (lexelet.IsIgnored || lexelet.Kind == TokenType.NEWLINE)
+            this.Advance(length);
+            for (int whitespaceCount = 1; whitespaceCount > 0;)
             {
-                this.Advance(match.Length, lexelet.Kind == TokenType.NEWLINE);
-                lexelet = this.FindLexelet(this.Source.Substring(this.Pos), out match);
-            }
+                whitespaceCount = 0;
+                int newlineLength;
+                while (this.IsNewline(out newlineLength))
+                {
+                    this.HandleNewline(newlineLength);
+                    whitespaceCount += 1;
+                }
 
-            Token token = new(match.Value, lexelet.Kind, this.LineNo, this.Col);
-            this.Advance(match.Length, false);
-            return token;
+                while (this.IsWhitespace())
+                {
+                    this.Advance();
+                    whitespaceCount += 1;
+                }
+
+                while (this.IsComment())
+                {
+                    this.HandleComment();
+                    whitespaceCount += 1;
+                }
+            }
         }
 
-        Lexelet FindLexelet(string input, out Match match)
+        void Advance(int length = 1)
         {
-            foreach (var lexelet in this.Lexelets)
-            {
-                match = lexelet.MatchDefinition(input);
+            this.Pos += length;
+            this.Col += length;
 
-                if (match != null)
-                    return lexelet;
+            if (this.Pos >= this.Source.Length)
+            {
+                this.CurChar = '\0';
+                return;
             }
 
-            var unknownChar = this.Source[this.Pos];
-            this.Abort($"Unknown character `{unknownChar}` (U+{(int)unknownChar}) at {this.LineNo}:{this.Col}");
-            match = null;
-            return null;
+            this.CurChar = this.Source[this.Pos];
+        }
+
+        char Peek()
+        {
+            if (this.Pos + 1 >= this.Source.Length)
+                return '\0';
+
+            return this.Source[this.Pos + 1];
+        }
+
+        bool IsComment()
+            => this.CurChar == '/' && this.Peek() == '/';
+
+        bool IsWhitespace()
+            => this.CurChar == ' ' || this.CurChar == '\t';
+
+        bool IsNewline(out int length)
+        {
+            var newlineLength = (this.CurChar, this.Peek()) switch
+            {
+                ('\r', '\n') => 2,
+                ('\n', _) => 1,
+                _ => 0
+            };
+            length = newlineLength;
+            return newlineLength > 0;
+        }
+
+        public Token[] Tokenize()
+        {
+            List<Token> tokens = new();
+
+            Token token = this.GetToken();
+            while (!token.CheckType(TokenType.EOF))
+            {
+                tokens.Add(token);
+                this.NextChar(length: token.Text.Length);
+                token = this.GetToken();
+            }
+
+            return tokens.ToArray();
+        }
+
+        Token GetToken()
+        {
+            var token = (this.CurChar, this.Peek()) switch
+            {
+                ('+', _) => CreateToken('+', TokenType.PLUS),
+                ('-', _) => CreateToken('-', TokenType.MINUS),
+                ('/', _) => CreateToken('/', TokenType.SLASH),
+                ('*', _) => CreateToken('*', TokenType.ASTERISK),
+                ('=', '=') => CreateToken("==", TokenType.EQEQ),
+                ('=', _) => CreateToken('=', TokenType.EQ),
+
+                ('\0', _) => CreateToken('\0', TokenType.EOF),
+                _ => null
+            };
+
+            if (token is null)
+                this.Abort($"Unknown character `{CurChar}` (U+{(int)CurChar}) at {LineNo}:{Col}");
+
+            return token;
         }
     }
 }

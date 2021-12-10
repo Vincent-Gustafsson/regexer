@@ -22,10 +22,23 @@ namespace rexer
         OPEN_ARROW,
         LPAREN,
         RPAREN,
-        GT
+        GT,
+        FOR,
+        PLUS,
+        ASTERISK,
+        SLASH,
+        MINUS,
+        WHITESPACE
     }
     class Token
     {
+        public Token(char text, TokenType kind, int lineno, int col)
+        {
+            Text = text.ToString();
+            Kind = kind;
+            LineNo = lineno;
+            Col = col;
+        }
         public Token(string text, TokenType kind, int lineno, int col)
         {
             Text = text;
@@ -38,5 +51,7 @@ namespace rexer
         public TokenType Kind { get; }
         public int LineNo { get; }
         public int Col { get; }
+
+        public bool CheckType(TokenType check) => this.Kind == check;
     }
 }

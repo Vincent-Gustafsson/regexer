@@ -9,11 +9,10 @@ namespace rexer
             string source = System.IO.File.ReadAllText("test.sigma");
             Lexer lexer = new(source);
 
-            Token tok = lexer.GetToken();
-            while (tok.Kind != TokenType.EOF)
+            var tokens = lexer.Tokenize();
+            foreach (var token in tokens)
             {
-                Console.WriteLine($"`{tok.Text}` {tok.Kind} -> {tok.LineNo}:{tok.Col}");
-                tok = lexer.GetToken();
+                Console.WriteLine($"{token.Kind} at {token.LineNo}:{token.Col}");
             }
         }
     }
